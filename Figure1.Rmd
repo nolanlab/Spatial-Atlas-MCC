@@ -1,0 +1,438 @@
+---
+title: "Figure_1"
+author: "Max Haist"
+date: "2024-11-03"
+output: html_document
+---
+
+### Load packages
+```{r}
+### Load packages
+library("survminer")
+library ("survival")
+library(survival)
+library(survivalAnalysis)
+library(survminer)
+library(tidyverse)
+library(tidytidbits)
+library(dplyr)
+
+required_packages <- c(
+  "tidyverse", "ggpubr", "survminer", "survival", "rstatix", "readxl", "ggprism", "reshape2", "forestplot", "gridExtra",
+  "circlize", "RColorBrewer", "ComplexHeatmap", "pheatmap", "matrixStats", "caret", "here", "tidystats")
+
+for (package in required_packages) {
+  if (package %in% rownames(installed.packages()) == FALSE) {
+    install.packages(package)
+  }
+}
+
+# Load required R packages
+library(tidyverse)
+library(ggpubr)
+library(survminer)
+library(survival)
+library(survivalAnalysis)
+library(rstatix)
+library(readxl)
+library(ggprism)
+library(reshape2)
+library(forestplot)
+library(gridExtra)
+library(circlize)
+library(RColorBrewer)
+library(ComplexHeatmap)
+library(pheatmap)
+library(matrixStats)
+library(caret)
+library(here)
+library(tidystats)
+
+here(getwd())
+
+# Custom functions
+source("Functions/five_point_sum.R")
+source("Functions/KM_plot_prep.R")
+source("Functions/calc_compartment_percent.R")
+```
+
+### Define colors
+```{r}
+tissue_compartments = c("Stroma" = "#009E73",  "Immune" = "#56B4E9",  "Tumor" = "red", "Epithelial" = "#F0E442")
+
+colors_cell_types_lowres_new = c('B_lymphocytes'= 'royalblue',"T_lymphocytes"= "#e6ab02","epithelial"="#d95f02","other_leukocytes" = "#7570b3", "myeloid_cells" = "tomato","stroma"= "#1b9e77","tumor" = "grey")#e6ab02
+
+colors_cell_highres = c("stroma" = "darkgreen",
+ "vessel"= "red",
+ "PMN"= "cyan",
+ "DC"= "magenta",
+ "FAP_CAF"= "orange",
+ "CAF" = "brown",
+ "M2_macrophages"= "salmon",
+ "tumor"= "black",
+ "VSMC"= "darkred",
+ 'epithelial'= 'gray',
+ 'CD8T'= 'skyblue',
+ 'M1_macrophages'= 'gold',
+ 'CD4T'= 'lightgreen',
+ 'Treg'= 'yellowgreen',
+ 'follicular_B'= 'royalblue',
+ "marginal_B" = "darkblue",
+ 'NK'= 'orchid',
+ "lymphatics" = "green",
+ 'TH1'= 'bisque',
+ 'CD4TFH'= 'goldenrod',
+ 'B'= 'blue',
+ "plasma" = "purple",
+ 'FDC'= 'darkorange',
+ "cDC1" = "yellow",
+ "CD73_CAF" = "orangered", 
+ "leukocytes" = "navy")
+
+colors_cell_common = c("stroma" = "darkgreen",
+ "vessel"= "red",
+ "PMN"= "cyan",
+ "DC"= "magenta",
+ "CAF"= "orange",
+ "macrophages"= "salmon",
+ "tumor"= "black",
+ "VSMC"= "darkred",
+ 'epithelial'= 'gray',
+ 'CD8T'= 'skyblue',
+ 'CD4T'= 'lightgreen',
+ 'Treg'= 'yellowgreen',
+ 'NK'= 'orchid',
+ "lymphatics" = "green",
+ 'B'= 'royalblue',
+ "cDC1" = "yellow",
+ "leukocytes" = "navy",
+ "plasma" = "purple")
+
+colors_cn = c("Vessel-enriched stroma" = 'darkgreen',
+ "CAF-enriched stroma" = 'orange',
+ 'Granulocyte-enriched'= 'cyan',
+ 'Macrophage-enriched immune infiltrate'= 'sienna',
+ 'T cell priming and activation'= 'lightgreen',
+ 'B cell priming zone'= 'royalblue',
+ 'Follicle'= 'blue',
+ 'Tumor boundary'= 'grey',
+ 'Epithelium'= 'magenta',
+ 'Bulk tumor'= 'navy',
+ 'Plasma-cell enriched immune infiltrate'= 'purple'
+)
+
+colors_cn = c("Vessel_enriched_stroma" = 'darkgreen',
+ "CAF_enriched_stroma" = 'orange',
+ 'Granulocyte_enriched'= 'cyan',
+ 'Myeloid_cell_enriched_immune_infiltrate'= 'sienna',
+ 'Tcell_priming_and_activation'= 'lightgreen',
+ 'B_cell_priming_zone'= 'royalblue',
+ 'Follicle'= 'blue',
+ 'Tumor_boundary'= 'grey',
+ 'Epithelium'= 'magenta',
+ 'Bulk_tumor'= 'navy',
+ 'Plasma_cell_enriched_immune_infiltrate'= 'purple'
+)
+```
+
+## Figure 1H-I: Overview of CODEX multiplex imaging data and association with clinical parameters
+### Read in data
+```{r}
+df <- read_csv("/Users/maxhaist/Nolan Lab Dropbox/Maximilian Haist/MCC_project/Data/CODEX/MCC_CN_CT_cleaned_full_for_R.csv")
+df_clin_metadata <- read_excel("/Users/maxhaist/Nolan Lab Dropbox/Maximilian Haist/MCC_project/Data/clinical_metadata/Clin_meta_dict_MCC_280524_TMA_core_num.xlsx")
+```
+### Reshaping the data
+```{r}
+### Rename all CN_annot names for analysis in R
+df$CN_k20_n25_annot <- gsub("B cell priming zone", "B_cell_priming_zone", df$CN_k20_n25_annot )
+df$CN_k20_n25_annot <- gsub("Bulk tumor", "Bulk_tumor", df$CN_k20_n25_annot)
+df$CN_k20_n25_annot <- gsub("CAF-enriched stroma", "CAF_enriched_stroma", df$CN_k20_n25_annot)
+df$CN_k20_n25_annot <- gsub("Granulocyte-enriched", "Granulocyte_enriched", df$CN_k20_n25_annot)
+df$CN_k20_n25_annot <- gsub("Myeloid-cell enriched immune infiltrate", "Myeloid_cell_enriched_immune_infiltrate", df$CN_k20_n25_annot )
+df$CN_k20_n25_annot  <- gsub("Plasma-cell enriched immune infiltrate", "Plasma_cell_enriched_immune_infiltrate", df$CN_k20_n25_annot )
+df$CN_k20_n25_annot <- gsub("T cell priming and activation", "Tcell_priming_and_activation", df$CN_k20_n25_annot )
+df$CN_k20_n25_annot <- gsub("Tumor boundary", "Tumor_boundary", df$CN_k20_n25_annot )
+df$CN_k20_n25_annot <- gsub("Vessel-enriched stroma", "Vessel_enriched_stroma", df$CN_k20_n25_annot)
+
+df$cell_types_lowres <- gsub("B lymphocytes", "B_lymphocytes", df$cell_types_lowres )
+df$cell_types_lowres <- gsub("T lymphocytes", "T_lymphocytes", df$cell_types_lowres)
+df$cell_types_lowres <- gsub("other leukocytes", "other_leukocytes", df$cell_types_lowres)
+df$cell_types_lowres <- gsub("myeloid cells", "myeloid_cells", df$cell_types_lowres)
+```
+
+### Calculate countes per condition
+Set a grouping parameter 
+```{r}
+counts_per_x <- "TMA_core_num" 
+Celltype_column <- "cell_types_lowres"
+unique_regions_column <- "unique_core_num"
+```
+
+Generate dataframe of count of celltype per region
+```{r}
+if (long_compute == TRUE) {
+  # Group by subcluster8 and unique_region and count occurrences
+  df2 <- df %>%
+    group_by_at(c(Celltype_column, unique_regions_column)) %>%
+    summarise(Count = n())
+
+  # Write output to a CSV file
+  # write.csv(df2, paste0(fast_compute_tables, "/", "count_per_region", ".csv"))
+
+  # Reshape the data to wide format with unique_region as rows and subcluster8 as columns
+  df3 <- as.data.frame(acast(df2, as.formula(paste0(unique_regions_column, "~", Celltype_column)), value.var = "Count"))
+  df3$unique_core_num <- rownames(df3)
+
+  # replace NA with 0
+  df3[is.na(df3)] <- 0
+  
+# Combine the clinical metadata and the counts per unique region in a new data frame using a right join
+composite <- right_join(df_clin_metadata, df3,  by = "unique_core_num")
+```
+
+Generate dataframe to display celltype counts/percent per x 
+```{r}
+if (long_compute == TRUE) {
+  # Combine columns from "composite" data frame
+  df_intermed <- cbind(composite[, counts_per_x], composite[, (ncol(df_clin_metadata) + 1):ncol(composite)])
+
+  # Rename first column and convert it to a factor
+  names(df_intermed)[1] <- "ID"
+  df_intermed$ID <- as.factor(df_intermed$ID)
+
+  # Create an empty list called "df_list"
+  df_list <- list()
+
+  # Loop through unique values of "ID" in "df_intermed"
+  for (i in df_intermed$ID) {
+    # Filter rows where "ID" matches current loop value
+    df3 <- df_intermed %>% filter(ID == i)
+
+    # Remove first column
+    df3 <- df3[2:ncol(df3)]
+
+    # If there is more than one row in "df3", sum the columns and save as a data frame
+    if (nrow(df3) > 1) {
+      df3[is.na(df3)] <- 0
+      intermed <- as.data.frame(colSums(df3))
+      df_list[[i]] <- t(intermed)
+    }
+
+    # If there is only one row in "df3", save it as a data frame
+    else {
+      intermed <- as.data.frame(df3[1, ])
+      df_list[[i]] <- intermed
+    }
+  }
+
+  # Combine the data frames in "df_list" into one data frame
+  ### Use this line of code for unique_core_num and TMA_core_num
+  #sums <- as.data.frame(do.call(rbind, df_list))
+
+  ### Use in case of using Pat_ID
+  df_list_t <- t(df_list)
+  sums <- as.data.frame(do.call(rbind, df_list_t))
+  rownames(sums) <- colnames(df_list_t)
+
+  # Add a column of row names to "sums"
+  sums <- tibble::rownames_to_column(sums, counts_per_x)
+
+  # Remove first column and replace NA values with 0
+  # Add a column of "ID" values to "total_counts"
+  # Rename the first column of "total_counts"
+  total_counts <- sums[, -1]
+  total_counts[is.na(total_counts)] <- 0
+
+  # Normalize data by row and multiply by 100
+  total_counts_percent <- (total_counts / rowSums(total_counts)) * 100
+
+  total_counts$ID <- sums[, 1]
+  names(total_counts)[names(total_counts) == "ID"] <- counts_per_x
+
+  # Add a column of "ID" values to "total_counts"
+  total_counts_percent$ID <- sums[, 1]
+
+  # Rename the first column of "total_counts"
+  names(total_counts_percent)[names(total_counts_percent) == "ID"] <- counts_per_x
+```
+
+# Figure 1H: Stacked barplot as summary for major cell type proportions
+```{r}
+df$common_ID <- "All"
+
+df_summary <- df %>%
+  group_by(common_ID, cell_types_lowres) %>%
+  summarise(count = n()) %>%
+  mutate(percentage = count / sum(count) * 100)  # Calculate percentages
+
+df_summary$cell_types_lowres <- factor(df_summary$cell_types_lowres, levels = c(
+  "B_lymphocytes", "myeloid_cells", "other_leukocytes", "T_lymphocytes", "stroma", "epithelial", "tumor"))
+
+# Plot the stacked barplot
+p1 <- ggplot(df_summary, aes(x = common_ID, y = percentage, fill = cell_types_lowres)) +
+  geom_bar(stat = "identity", color = "black", width = 0.8) +  # Add black borders to the bars
+  geom_text(aes(label = ifelse(percentage > 2, paste0(round(percentage, 1), "%"), "")), 
+            position = position_stack(vjust = 0.5), color = "black", size = 3) +  # Add percentage labels inside bars only if > 2%
+  scale_fill_manual(values = colors_cell_types_lowres_new) +  # Use custom colors
+  labs(x = "Tissue", y = "Percentage", title = "Cell Type Distribution by Tissue") +
+  scale_y_continuous(labels = scales::percent_format(scale = 1)) +  # Format y-axis as percentage
+  theme_void() +  # Use a minimal theme for a clean look
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, color = "black", face = "bold"),  # Rotate x-axis labels by 90 degrees, make them black and bold
+        axis.ticks = element_blank())  # Remove x-axis ticks
+print(p1)
+
+# Define the path to the downloads directory
+output_path <- '/Users/maxhaist/Nolan Lab Dropbox/Maximilian Haist/U54_data/Output/2_Tissue_type_comparisons/general_comparisons/'
+
+# Save the plot
+ggsave(filename = file.path(output_path, "stacked_barplot_major_cell_types_summary.pdf"),
+       plot = last_plot(), # Use the last plot created
+       device = "pdf", 
+       dpi = 300, 
+       height = 8, 
+       width = 3)
+```
+
+# Figure 1I: Stacked barplot with clinical metadata ordered by euclidian clustering
+```{r}
+clinical.subset <- df_clin_metadata_TMA_core_num_new %>% dplyr::select(TMA_core_num, Stage_coded_ED, Progress_to_metastatic_disease, CPI_ORR, Survival_status, MCPyV_status_Nolan, Tissue_coded)
+
+clinical.subset <- clinical.subset %>%
+  rename(Stage = Stage_coded_ED)
+clinical.subset <- clinical.subset %>%
+  rename(Dist.recurrence = Progress_to_metastatic_disease)
+clinical.subset <- clinical.subset %>%
+  rename(ICB.response = CPI_ORR)
+clinical.subset <- clinical.subset %>%
+  rename(Deceased = Survival_status)
+clinical.subset <- clinical.subset %>%
+  rename(Viral.status = MCPyV_status_Nolan)
+clinical.subset <- clinical.subset %>%
+  rename(Tissue = Tissue_coded)
+
+ clinical.subset$Stage <- factor(clinical.subset$Stage)
+ clinical.subset$Dist.recurrence <- factor(clinical.subset$Dist.recurrence)
+ clinical.subset$ICB.response <- factor(clinical.subset$ICB.response)
+ clinical.subset$Deceased <- factor(clinical.subset$Deceased)
+ clinical.subset$Viral.status <- factor(clinical.subset$Viral.status)
+ clinical.subset$Tissue <- factor(clinical.subset$Tissue)
+ levels(clinical.subset$Stage) <- c("0","1","2","3")
+  levels(clinical.subset$Dist.recurrence) <- c("0", "1")
+ levels(clinical.subset$ICB.response) <- c("0","1")
+  levels(clinical.subset$Deceased) <- c("0","1")
+  levels(clinical.subset$Viral.status) <- c("negative", "positive")
+ levels(clinical.subset$Tissue) <- c("Cutaneous","LN")
+ 
+ 
+df_clin_reshape <-reshape2::melt(clinical.subset, id.vars =c("TMA_core_num"), variable.name = "clinical_features", value.name = "value")
+
+ha = HeatmapAnnotation(foo = anno_simple(1:10, height = unit(2, "cm")))
+ha = HeatmapAnnotation(Stage=anno_simple(df_clin_metadata_TMA_core_num_new$Stage_coded_ED))
+ha = rowAnnotation(Stage=anno_simple(df_clin_metadata_TMA_core_num_new$Stage_coded_ED))
+
+plot(ha)
+
+tdat_m <- as.matrix(total_counts_percent)
+rownames(tdat_m) <- total_counts_percent$TMA_core_num
+hc <- hclust(dist(tdat_m[,-8], method="euclidian"),"ward.D2")
+
+tdat_wide <- data.frame(total_counts_percent)
+
+tdat_wide_c <- left_join(tdat_wide, df_clin_metadata_TMA_core_num_new, by="TMA_core_num")
+
+tdat_wide_c$TMA_core_num <- factor(tdat_wide_c$TMA_core_num, levels = hc$labels[hc$order])
+tdat_wide_c <- tdat_wide_c %>% as.data.frame
+rownames(tdat_wide_c) <-tdat_wide_c$TMA_core_num
+
+library(wesanderson)
+row_dend = as.dendrogram(hclust(dist(tdat_m[,-8], method="euclidian"),"ward.D2"))
+tdat_wide_c$TMA_core_num <- factor(tdat_wide_c$TMA_core_num, levels = hc$labels[hc$order])
+tdat_wide_c <- tdat_wide_c %>% as.data.frame
+rownames(tdat_wide_c) <-tdat_wide_c$TMA_core_num
+
+
+hm <- rowAnnotation(Proportions=anno_barplot(tdat_wide_c[1:7], gp=gpar(fill=1:7, col=1:7),bar_width = 1, width = unit(12, "cm"), height = unit(6, "cm")),
+                    Stage_coded_ED=anno_simple(tdat_wide_c$Stage_coded_ED),
+                    Progress_to_metastatic_disease=anno_simple(tdat_wide_c$Progress_to_metastatic_disease),
+                    CPI_ORR=anno_simple(tdat_wide_c$CPI_ORR),
+                    Survival_status=anno_simple(tdat_wide_c$Survival_status),
+                    MCPyV_status_Nolan=anno_simple(tdat_wide_c$MCPyV_status_Nolan),
+                    Tissue_coded=anno_simple(tdat_wide_c$Tissue_coded))
+plot(hm)
+
+
+hc$labels[hc$order]
+h1 <-Heatmap(as.matrix(tdat_wide_c$TMA_core_num), rect_gp = gpar(type = "none"),cluster_rows=row_dend,show_heatmap_legend = FALSE,
+        left_annotation = rowAnnotation(Proportions=anno_barplot(tdat_wide_c[1:7], gp=gpar(fill=1:7, col=1:7),bar_width = 1, width = unit(12, "cm"), height = unit(6, "cm")),
+                    Stage_coded_ED=anno_simple(tdat_wide_c$Stage_coded_ED),
+                    Progress_to_metastatic_disease=anno_simple(tdat_wide_c$Progress_to_metastatic_disease),
+                    CPI_ORR=anno_simple(tdat_wide_c$CPI_ORR),
+                    Survival_status=anno_simple(tdat_wide_c$Survival_status),
+                    MCPyV_status_Nolan=anno_simple(tdat_wide_c$MCPyV_status_Nolan),
+                    Tissue_coded=anno_simple(tdat_wide_c$Tissue_coded)
+                    ))
+draw(h1)
+
+
+col = list(Tissue_coded = c("LN" = "lightgreen", "Cutaneous" = "royalblue", "NA" = "#999999"),
+          Stage_coded_ED = c("0" = "#F7F0F5", "1" = "#56B4E9","2" = "#E69F00", "3" = "#999999"),
+          Progress_to_metastatic_disease = c("0" = "grey", "1" = "purple"),
+          Immunosuppression = c("0" = "white", "1" = "darkred"),
+          ORR_1 = c("0" = "#994377", "1" = "#2DBD7A"),
+          Survival_status = c("0" = "#F7F0F5", "1" = "#233D4D"),
+          MCPyV_status_Nolan = c("negative" = "cornflowerblue", "positive" = "#E01B39"))
+
+new_order <- c("B_lymphocytes", "myeloid_cells", "other_leukocytes", "stroma", "T_lymphocytes", "epithelial", "tumor")
+
+# Reorder the specified columns
+reordered_columns <- tdat_wide_c[, new_order]
+
+# Select the remaining columns
+remaining_columns <- tdat_wide_c[, !(names(tdat_wide_c) %in% new_order)]
+
+# Combine the reordered columns with the remaining columns
+tdat_wide_c <- cbind(reordered_columns, remaining_columns)
+
+rownames(tdat_wide_c) <- tdat_wide_c$YourRowIdentifierColumn
+
+#here
+col_c <- c("royalblue","tomato","#7570b3", "#1b9e77", "#e6ab02", "#d95f02", "grey")
+h1 <-Heatmap(as.matrix(tdat_wide_c$TMA_core_num), rect_gp = gpar(type = "none"),cluster_rows=row_dend,show_heatmap_legend = FALSE, 
+        left_annotation = rowAnnotation(Proportions=anno_barplot(tdat_wide_c[1:7], gp=gpar(fill=col_c[1:7], col=col_c[1:7]),bar_width = 1, width = unit(6, "cm"), height = unit(6, "cm")),
+                    Stage_coded_ED=tdat_wide_c$Stage_coded_ED,
+                    Progress_to_metastatic_disease=tdat_wide_c$Progress_to_metastatic_disease,
+                    CPI_ORR=tdat_wide_c$CPI_ORR,
+                    #Immunosuppression = tdat_wide_c$Immunosuppression,
+                    Survival_status=tdat_wide_c$Survival_status,
+                    MCPyV_status_Nolan=tdat_wide_c$MCPyV_status_Nolan,
+                    Tissue_coded=tdat_wide_c$Tissue_coded,
+        col = list(Stage_coded_ED=c("1"=brewer.pal(n = 11, name = "RdYlBu")[9],
+                           "2"=brewer.pal(n = 11, name = "RdYlBu")[4],
+                           "3"=brewer.pal(n = 11, name = "RdYlBu")[2],
+                           "0"=brewer.pal(n = 11, name = "RdYlBu")[10]),
+               Progress_to_metastatic_disease = c("0"=brewer.pal(n = 9, name = "Set1")[10],
+                           "1"=brewer.pal(n = 9, name = "Set1")[1],
+                           "NA"="grey"),
+               CPI_ORR = c("0"="#994377",
+                           "1"="#2DBD7A",
+                           "NA"="grey"),
+               #Immunosuppression = c("0" = "white", "1" = "darkred"),
+               Survival_status = c("0"="white",
+                           "1"="black"),
+               MCPyV_status_Nolan = c("negative"="cornflowerblue",
+                           "positive"="#E01B39"),
+               Tissue_coded = c("Cutaneous"=brewer.pal(n = 8, name = "Dark2")[2],
+                          "LN"=brewer.pal(n = 8, name = "Dark2")[1],
+                          "Other"= "grey")
+               )
+                    
+                    ))
+draw(h1,heatmap_legend_side = "right")
+output_path = "/Users/maxhaist/Nolan Lab Dropbox/Maximilian Haist/MCC_project/Output_R_analysis/Figure2/overview_heatmaps_stacked_barplots/"
+pdf(file=file.path(output_path, paste("New_All_TMA_cores_cluster_rows_euclidian.pdf")), width=9, height=9)
+draw(h1,heatmap_legend_side = "left")
+
+dev.off()
+```
+
+
