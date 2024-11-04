@@ -20,9 +20,8 @@ The following is an overview of the code in this repository. Please note that si
 File Name	          Description
 ##### Figure1.rmd: Produces Figure 1F, 1H, 1I
 ##### Figure2.rmd: Produces Figure 2C, 2D, 2E, 2H
-##### Figure3.rmd: Produces Figure 3B and 3C
-##### Figure3.ipynb: Produces Density plot and associated statistics Figure 3E and 3F 
-##### Figure4.rmd:	Produces Figure 4B, 4D
+##### Figure3.rmd: Produces Figure 3B, 3C and 3H
+##### Figure4.rmd:	Produces Figure 4B, 4E
 ##### Receptor-ligand-proximity-analysis.ipynb: Produces Figure 4J, 4K and 4M
 ##### Figure 5.rmd: Produces Figure 5C, 5D and 5F
 ##### Figure 6.rmd: Produces Figure 6I, 6J, 6K
