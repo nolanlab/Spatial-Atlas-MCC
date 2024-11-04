@@ -11,8 +11,7 @@ We recommend using the free package manager Anaconda (https://www.anaconda.com) 
 
 ## Functions:
 1) Receptor-ligand proximity analysis
-2) Barycentric density plot
-3) Spatial context maps to reveal neighborhood interfaces associated with clinical outcomes
+2) Spatial context maps to reveal neighborhood interfaces associated with clinical outcomes
 
 ## Overview of code for main Figures
 The following is an overview of the code in this repository. Please note that since this repository doesn't contain the necessary data that was used for the analysis, if one wishes to reproduce the result, one will need to download the data and change the file path accordingly in the code.
