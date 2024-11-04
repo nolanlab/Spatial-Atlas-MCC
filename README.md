@@ -23,6 +23,6 @@ File Name	          Description
 ##### Figure4.rmd:	Produces Figure 4B, 4E
 ##### Receptor-ligand-proximity-analysis.ipynb: Produces Figure 4J, 4K and 4M
 ##### Figure 5.rmd: Produces Figure 5C, 5D and 5F
-##### Figure 6.rmd: Produces Figure 6I, 6J, 6K
+##### Figure 6.rmd: Produces Figure 6J, 6K
 ##### Spatial_context_maps.ipynb: Produces Figures 6G and 7J-K
-##### Figure 7.rmd: Produces Figure 7F, 7H and 7I.
+##### Figure 7.rmd: Produces Figure 7H and 7I.
