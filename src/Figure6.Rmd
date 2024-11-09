@@ -4,6 +4,420 @@ author: "Max Haist"
 date: "2024-11-04"
 output: html_document
 ---
+
+# Figure 6I: 
+```{r}
+library(glmnet)
+```
+## Generate dataset for TTM baseline patients
+```{r}
+df_TTM_baseline <- df %>% filter(Local_disease == 1 & Baseline_FU_biopsy == "pre")
+```
+
+## Calculate marker positive cell type proportions
+```{r}
+# Function to filter data, calculate proportions for specified cell types, remove "negative" columns, and rename "positive" columns
+process_celltype_proportions <- function(df, df_clin_metadata, counts_per_x, unique_regions_column, cell_types_filter, celltype_columns) {
+  
+  # Filter dataframe for the specified cell type
+  df_filt <- df %>% filter(cell_types_lowres %in% cell_types_filter)
+  
+  # Initialize list to store results for each Celltype_column
+  total_counts_percent_list <- list()
+  
+  for (Celltype_column in celltype_columns) {
+    # Generate count of celltype per region
+    df2 <- df_filt %>%
+      group_by_at(c(Celltype_column, unique_regions_column)) %>%
+      summarise(Count = n())
+    
+    # Reshape to wide format
+    df3 <- as.data.frame(acast(df2, as.formula(paste0(unique_regions_column, "~", Celltype_column)), value.var = "Count"))
+    df3$unique_core_num <- rownames(df3)
+    df3[is.na(df3)] <- 0  # Replace NAs with 0
+
+    # Combine clinical metadata with counts per unique region
+    composite <- right_join(df_clin_metadata, df3, by = "unique_core_num")
+    
+    # Prepare dataframe for proportions
+    df_intermed <- cbind(composite[, counts_per_x], composite[, (ncol(df_clin_metadata) + 1):ncol(composite)])
+    names(df_intermed)[1] <- "ID"
+    df_intermed$ID <- as.factor(df_intermed$ID)
+    
+    # Create a list to store data by ID
+    df_list <- list()
+    for (i in df_intermed$ID) {
+      df3 <- df_intermed %>% filter(ID == i)
+      df3 <- df3[2:ncol(df3)]
+      if (nrow(df3) > 1) {
+        df3[is.na(df3)] <- 0
+        intermed <- as.data.frame(colSums(df3))
+        df_list[[i]] <- t(intermed)
+      } else {
+        intermed <- as.data.frame(df3[1, ])
+        df_list[[i]] <- intermed
+      }
+    }
+    
+    # Combine into one dataframe
+    df_list_t <- t(df_list)
+    sums <- as.data.frame(do.call(rbind, df_list_t))
+    rownames(sums) <- colnames(df_list_t)
+    sums <- tibble::rownames_to_column(sums, counts_per_x)
+    total_counts <- sums[, -1]
+    total_counts[is.na(total_counts)] <- 0
+    total_counts_percent <- (total_counts / rowSums(total_counts)) * 100
+    total_counts_percent$ID <- sums[, 1]
+    names(total_counts_percent)[names(total_counts_percent) == "ID"] <- counts_per_x
+
+    # Remove all columns with "negative" in the name
+    total_counts_percent <- total_counts_percent %>% dplyr::select(-contains("negative"))
+
+    # Rename "positive" columns to include both Celltype_column and cell_types_filter
+    colnames(total_counts_percent) <- gsub("positive", paste0(Celltype_column, "_", cell_types_filter), colnames(total_counts_percent))
+
+    # Store the result
+    total_counts_percent_list[[Celltype_column]] <- total_counts_percent
+  }
+  
+  # Combine results for all cell types
+  combined_total_counts_percent <- cbind(total_counts_percent_list)
+  
+  return(combined_total_counts_percent)
+}
+
+# Define cell type filters and cell type columns to process
+cell_type_filters <- list(
+  "tumor" = c("EZH2_pos", "EMT_pos", "Hypoxic_pos", "Ki67_pos", "PDL1_cluster_pos"),
+  "T_lymphocytes" = c("TCF17_pos", "T_cell_memory", "Exhausted_cluster", "Resident_T_cell_pos", "Ki67_pos"),
+  "myeloid_cells" = c("HLADR_pos", "CXCL9_pos", "IL10_pos", "PDL1_cluster_pos")
+)
+
+# Run function for each cell type filter and combine results
+results_list <- lapply(names(cell_type_filters), function(cell_type) {
+  process_celltype_proportions(
+    df = df_TTM_baseline,
+    df_clin_metadata = df_clin_metadata,
+    counts_per_x = "Pat_ID",
+    unique_regions_column = "unique_core_num",
+    cell_types_filter = cell_type,
+    celltype_columns = cell_type_filters[[cell_type]]
+  )
+})
+
+data_frames_list <- list()
+
+# Iterate over results_list to extract and save data frames
+count <- 1  # Initialize a counter for naming the data frames
+
+for (i in seq_along(results_list)) {
+  for (j in seq_along(results_list[[i]])) {
+    # Extract the data frame
+    df4 <- results_list[[i]][[j]]
+    
+    # Check if the data frame is not empty
+    if (!is.null(df4) && nrow(df4) > 0) {
+      # Create a dynamic variable name (df_list_1, df_list_2, ..., df_list_14)
+      var_name <- paste0("df_list_", count)
+      assign(var_name, df4, envir = .GlobalEnv)  
+      count <- count + 1  
+    }
+  }
+}
+
+# Check the saved data frames in the global environment
+ls(pattern = "df_list_")
+
+combined_df <- df_list_1  # Start with the first data frame
+
+# List of data frames to combine
+df_list_names <- paste0("df_list_", 2:14)
+
+# Iterate over the list of data frame names
+for (df_name in df_list_names) {
+  # Get the data frame by name using get()
+  df_to_merge <- get(df_name)
+  
+  # Check if the data frame contains the 'Pat_ID' column
+  if ("Pat_ID" %in% colnames(df_to_merge)) {
+    # Merge the current data frame with the combined data frame by 'Pat_ID'
+    combined_df <- merge(combined_df, df_to_merge, by = "Pat_ID", all = TRUE)
+  } else {
+    message(paste(df_name, "does not contain 'Pat_ID' column. Skipping..."))
+  }
+}
+
+# Check the combined data frame
+print(combined_df)
+```
+
+## Calculate major cell type and CN proportions
+```{r}
+df_TTM_baseline <- df %>% filter(Local_disease == 1 & Baseline_FU_biopsy == "pre")
+
+# Function to calculate proportions for cell_types_mediumres and CN_k20_n25
+process_celltype_proportions_unfiltered <- function(df, df_clin_metadata, counts_per_x, unique_regions_column, celltype_columns) {
+  
+  # Initialize list to store results for each Celltype_column
+  total_counts_percent_list <- list()
+  
+  # Function to calculate percentages
+  calculate_percentages <- function(data) {
+    total_counts <- data[,-1]  # Remove ID or relevant identifier column
+    total_counts[is.na(total_counts)] <- 0
+    total_counts_percent <- (total_counts / rowSums(total_counts)) * 100
+    total_counts_percent <- cbind(data[[1]], total_counts_percent)  # Add ID back
+    return(total_counts_percent)
+  }
+  
+  # Calculate for unfiltered cell_types_mediumres and CN_k20_n25 columns
+  for (Celltype_column in celltype_columns) {
+    # Generate count of celltype per region for unfiltered data
+    df2 <- df %>%
+      group_by_at(c(Celltype_column, unique_regions_column)) %>%
+      summarise(Count = n(), .groups = "drop")
+    
+    # Proceed only if there are counts to process
+    if (nrow(df2) > 0) {
+      # Reshape to wide format
+      df3 <- as.data.frame(acast(df2, as.formula(paste0(unique_regions_column, "~", Celltype_column)), value.var = "Count"))
+      df3$unique_core_num <- rownames(df3)
+      df3[is.na(df3)] <- 0  # Replace NAs with 0
+      
+      # Combine clinical metadata with counts per unique region
+      composite <- right_join(df_clin_metadata, df3, by = "unique_core_num")
+      
+      # Prepare dataframe for proportions
+      df_intermed <- cbind(composite[, counts_per_x], composite[, (ncol(df_clin_metadata) + 1):ncol(composite)])
+      names(df_intermed)[1] <- "ID"
+      df_intermed$ID <- as.factor(df_intermed$ID)
+      
+      # Create a list to store data by ID for unfiltered data
+      df_list <- list()
+      for (i in df_intermed$ID) {
+        df3 <- df_intermed %>% filter(ID == i)
+        df3 <- df3[2:ncol(df3)]
+        if (nrow(df3) > 1) {
+          df3[is.na(df3)] <- 0
+          intermed <- as.data.frame(colSums(df3))
+          df_list[[i]] <- t(intermed)
+        } else if (nrow(df3) == 1) {
+          intermed <- as.data.frame(df3[1, ])
+          df_list[[i]] <- intermed
+        }
+      }
+      
+      # Combine into one dataframe
+      df_list_t <- t(df_list)
+      sums <- as.data.frame(do.call(rbind, df_list_t))
+      rownames(sums) <- colnames(df_list_t)
+      sums <- tibble::rownames_to_column(sums, counts_per_x)
+      
+      # Calculate percentages for unfiltered data
+      total_counts_percent_unfiltered <- calculate_percentages(sums)
+      
+      # Store the result with a distinguishing name
+      total_counts_percent_list[[Celltype_column]] <- total_counts_percent_unfiltered
+    } else {
+      warning(paste("No data available for column:", Celltype_column))
+    }
+  }
+  
+  # Combine results for all cell types
+  combined_total_counts_percent <- do.call(cbind, total_counts_percent_list)
+  
+  return(combined_total_counts_percent)
+}
+
+# Define columns to process
+celltype_columns <- c("cell_types_mediumres", "CN_k20_n25")
+
+# Run function for unfiltered data
+results_unfiltered <- process_celltype_proportions_unfiltered(
+  df = df_TTM_baseline,
+  df_clin_metadata = df_clin_metadata,
+  counts_per_x = "Pat_ID",
+  unique_regions_column = "unique_core_num",
+  celltype_columns = celltype_columns
+)
+
+df_cell_types_mediumres <- results_unfiltered
+# Rename the first column to "Pat_ID"
+colnames(df_cell_types_mediumres)[1] <- "Pat_ID"
+
+# Remove the string before the "." in all column names
+colnames(df_cell_types_mediumres) <- gsub(".*\\.", "", colnames(df_cell_types_mediumres))
+df_cell_types_mediumres <- df_cell_types_mediumres %>% 
+  dplyr::select(-`data[[1]]`)
+```
+
+## Combine combined_df and df_cell_types_mediumres
+```{r}
+TTM_baseline <- merge(combined_df, df_cell_types_mediumres, by = "Pat_ID", all = TRUE)
+TTM_baseline$Pat_ID <- paste("Patient", TTM_baseline$Pat_ID, sep = "_")
+TTM_baseline$Pat_ID <- as.character(TTM_baseline$Pat_ID)
+df_KM_plots2 <- TTM_baseline
+```
+
+## Dichotomize the groups by the median
+```{r}
+cols <- colnames(df_KM_plots2)[2:51]
+
+perform = TRUE
+
+
+if(perform == TRUE) {
+ for (x in cols) {
+  # The `as.numeric` function is applied to each column of `df_KM_plots[x]`.
+  # `cbind.data.frame` combines the resulting numeric vectors into a data frame.
+  df_KM_plots2[x] <- do.call(cbind.data.frame, lapply(df_KM_plots2[x], as.numeric))
+  # `test_df` is a data frame that contains only the column `x` of `all_data`.
+  test_df <- df_KM_plots2[, x]
+  # The first element of `test_df` is converted to a numeric vector.
+  test_vec <- test_df
+  # The NA values are removed from `test_vec`.
+  test_vec <- test_vec[!is.na(test_vec)]
+  # The median of `test_vec` is calculated.
+  test_vec_median <- median(test_vec)
+  # A string containing the name of `x` and its median value is printed.
+  print(paste0(x, " ", "Median:", " ", as.character(test_vec_median)))
+  # A new column named `x_group` is added to `df_KM_plots`.
+  # It takes the value "high" if the corresponding value in column `x` is greater than `test_vec_median`, and "low" otherwise.
+  df_KM_plots2[, paste0(x, "_group")] <- ifelse(df_KM_plots2[, x] > test_vec_median, "high", "low")
+} 
+}
+```
+
+## Calculate and plot variables associated with Time to metastasis in Lasso CoxPH model
+```{r}
+plot_folder <- '/Users/maxhaist/Nolan Lab Dropbox/Maximilian Haist/MCC_project/scripts/Submission/test/TTM/'
+
+surv <-c("B_group", "CAF_group", "CD4T_group", "CD8T_group", "cDC1_group", "DC_group", "epithelial_group", "leukocytes_group", "lymphatics_group", "macrophages_group", "NK_group", "plasma_group", "PMN_group", "stroma_group", "Treg_group", "tumor_group", "vessel_group", "VSMC_group", "CN0_group", "CN1_group", "CN10_group","CN2_group","CN3_group", "CN4_group", "CN5_group", "CN6_group", "CN7_group","CN8_group","CN9_group","Ki67_pos_tumor_group","EMT_pos_tumor_group", "EZH2_pos_tumor_group", "PDL1_cluster_pos_tumor_group", "Hypoxic_pos_tumor_group", "TCF17_pos_T_lymphocytes_group", "Ki67_pos_T_lymphocytes_group", "central_memory_group", "effector_memory_group", "naive_group", "other_group", "stem_cell_memory_group", "Exhausted_group", "Low_Exhaustion_group", "non_exhausted_group", "Terminal_Exhaustion_group", "Resident_T_cell_pos_T_lymphocytes_group", "PDL1_cluster_pos_myeloid_cells_group", "HLADR_pos_myeloid_cells_group", "CXCL9_pos_myeloid_cells_group", "IL10_pos_myeloid_cells_group" )
+
+new_df <- right_join(df_clin_metadata_PatID_new, df_KM_plots2, by = "Pat_ID")
+#keep_ID <- total_counts_percent$TMA_core_num
+keep_ID <- df_KM_plots2$Pat_ID
+
+new_df <- subset(new_df, Pat_ID %in% keep_ID)
+
+df_filt <- new_df %>% dplyr::select("Pat_ID", "MCPyV_status_Nolan","Gender","T","tumor_thickness_mm","Stage_coded_ED","Age_diagnosis","Immunosuppression", "MHCI_IHC_summary", "Time_to_metastasis", "Progress_to_metastatic_disease", "B_group", "CAF_group", "CD4T_group", "CD8T_group", "cDC1_group", "DC_group", "epithelial_group", "leukocytes_group", "lymphatics_group", "macrophages_group", "NK_group", "plasma_group", "PMN_group", "stroma_group", "Treg_group", "tumor_group", "vessel_group", "VSMC_group", "CN0_group", "CN1_group", "CN10_group","CN2_group","CN3_group", "CN4_group", "CN5_group", "CN6_group", "CN7_group","CN8_group","CN9_group","Ki67_pos_tumor_group","EMT_pos_tumor_group", "EZH2_pos_tumor_group", "PDL1_cluster_pos_tumor_group", "Hypoxic_pos_tumor_group", "TCF17_pos_T_lymphocytes_group", "Ki67_pos_T_lymphocytes_group", "central_memory_group", "effector_memory_group", "naive_group", "other_group", "stem_cell_memory_group", "Exhausted_group", "Low_Exhaustion_group", "non_exhausted_group", "Terminal_Exhaustion_group", "Resident_T_cell_pos_T_lymphocytes_group", "PDL1_cluster_pos_myeloid_cells_group", "HLADR_pos_myeloid_cells_group", "CXCL9_pos_myeloid_cells_group", "IL10_pos_myeloid_cells_group")
+
+#surv_dat$metacluster <-as.numeric(surv_dat$metacluster)
+fd_test <- fastDummies::dummy_cols(df_filt, select_columns = c(paste(surv),"MCPyV_status_Nolan","Gender","T","tumor_thickness_mm","Stage_coded_ED","Age_diagnosis","Immunosuppression", "MHCI_IHC_summary")) 
+
+time <- fd_test$Time_to_metastasis
+status <- fd_test$Progress_to_metastatic_disease
+
+rownames(fd_test) <- fd_test$Pat_ID
+
+fd_test <-fd_test %>%select(-c(paste(surv),colnames(df_filt),contains("Progress_to_metastatic_disease"))) #))
+
+fd_test[is.na(fd_test)] <- 0
+fd_test_matrix <-data.matrix(fd_test)
+
+#determine lambda or lambda.1se
+cv.fit <- cv.glmnet(fd_test_matrix, Surv(time, status), family = "cox", maxit = 1000)
+fit <- glmnet(fd_test_matrix, Surv(time, status), family = "cox", maxit = 1000)
+plot(cv.fit)
+cv.fit$lambda.min
+
+ggsave(paste0(plot_folder, "/", "Lasso_CoxPH_partial_likelihood_deviance_lambad_fit", ".pdf"), height = 5, width = 8, dpi = 1600) 
+
+#loop to determine optimal lambda for lasso regression
+MSEs <- NULL
+for (i in 1:100){
+                 cv <-  cv.glmnet(fd_test_matrix, Surv(time, status), family = "cox", maxit = 1000)
+                 MSEs <- cbind(MSEs, cv$cvm)
+             }
+  rownames(MSEs) <- cv$lambda
+  lambda.min <- as.numeric(names(which.min(rowMeans(MSEs))))
+
+#coef(fit, s = lambda.min)
+Coefficients <- coef(fit, s = lambda.min)
+Active.Index <- which(Coefficients != 0)
+Active.Coefficients <- Coefficients[Active.Index]
+#Coefficients
+
+#correrct
+dense_matrix <- as.matrix(Coefficients)
+df_CoxPH <- as.data.frame(dense_matrix)
+#df_CoxPH <-Coefficients %>% as.data.frame() 
+df_CoxPH$Coefficients <- rownames(df_CoxPH)
+colnames(df_CoxPH) <- c("Predictor","Coefficient")
+df_CoxPH <-df_CoxPH[df_CoxPH$Predictor !=0,]
+
+na_td_res <- df_CoxPH[-grep("NA",df_CoxPH$Coefficient),]
+
+p <-ggplot(df_CoxPH, aes(x = reorder(Coefficient,Predictor), y = Predictor, color=Predictor >0)) +
+geom_point(size = 4) +
+#geom_errorbar(aes(ymax = conf.high, ymin = conf.low))+
+#scale_colour_viridis_d("p value < 0.05")+
+coord_flip()+
+geom_hline(yintercept = 0,color = 'black')+
+theme_bw()+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  geom_segment(aes(y = 0, 
+                   x = Coefficient, 
+                   yend = Predictor, 
+                   xend = Coefficient), 
+               color = "black") +
+#scale_colour_jco()+
+  ylim(-1,1)
+p
+ggsave(paste0(plot_folder, "/", "Multivariate_Lasso_Coefficients_predictors_coxPH_model__full_variables_TTM", ".pdf"), height = 4, width = 8, dpi = 1600) 
+
+########
+active_coefficients <- Coefficients[,1] != 0
+x <- fd_test_matrix[,active_coefficients]
+x <- data.frame(x)
+
+x_filt <- x[, -which(names(x) == "CN3_group_high")]
+
+vct <-colnames(x_filt)
+coxdf<-coxph(Surv(time,status)~.,data=x_filt)
+
+td_res = tidy(coxdf, exponentiate = TRUE)
+td_res = td_res %>% arrange(estimate) %>% mutate(term = factor(term,levels = term))
+td_res<-td_res %>%
+  rowwise() %>%
+  dplyr::mutate(conf.high = estimate + std.error)
+
+td_res<-td_res %>%
+  rowwise() %>%
+  dplyr::mutate(conf.low = estimate - std.error)
+td_res<-td_res[!td_res$std.error == 0, ]
+na_td_res <- td_res#[-grep("NA",td_res$term),]
+
+
+p <-ggplot(na_td_res, aes(x = term, y = estimate,color =p.value < 0.05)) +
+geom_point(size = 4) +
+geom_errorbar(aes(ymax = conf.high, ymin = conf.low))+
+scale_colour_viridis_d("p value < 0.05")+
+coord_flip()+
+geom_hline(yintercept = 1,color = 'black')+
+theme_bw()
+#scale_colour_tableau()+
+#xlim(-10,10)
+p
+ggsave(file=file.path(plot_folder, paste("CoxPH_Lasso_allcelltypes_prop.pdf")), width=8, height=6, plot=p)
+
+ggforest(coxdf, data =  (fd_test %>% select(-contains("NA"))))
+
+ggsave(paste0(plot_folder, "/", "Multivariate_Lasso_ggforest_coxPH_model_full_variables_TTM", ".pdf"), height = 5, width = 8, dpi = 1600) 
+ggforest(coxdf, data = fd_test)
+dev.off()
+```
+
+
+# Loading the libraries and LCMseq 
+```{r}
+library(tibble)
+to_DEseq = read.csv("/Users/maxhaist/Library/CloudStorage/GoogleDrive-mhaist@stanford.edu/.shortcut-targets-by-id/1YzHkXM4dXzuGzyV-ZE_HXBgAGxaMb31Y/MCC_seq_for_Max_Haist/sorted_counts_MCC.csv", row.names = 1)
+pdata2 = read.csv('/Users/maxhaist/Library/CloudStorage/GoogleDrive-mhaist@stanford.edu/.shortcut-targets-by-id/1YzHkXM4dXzuGzyV-ZE_HXBgAGxaMb31Y/MCC_seq_for_Max_Haist/sorted_pdata_MCC.csv')
+
+pdata2$library.name == colnames(to_DEseq)
+```
+
 # Loading the libraries and LCMseq 
 ```{r}
 library(tibble)
