@@ -1,4 +1,4 @@
-# MCPyV-linked TME Reorganization in MCC
+# Virus-associated Immunomodulation within the Merkel cell carcinoma TME is linked to Clinical Outcomes
 ## Code accompanying our manuscript "The Spatial Landscape of Virus-Linked Immunomodulation Resolves T-cell Infiltration patterns and Clinical Outcomes in Merkel cell carcinoma"
 ## Introduction
 This repo consists provides two useful functions from our manuscript that we have generalized to make more user-friendly for the broader community: 
