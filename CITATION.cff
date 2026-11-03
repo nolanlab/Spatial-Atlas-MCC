@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+  - family-names: "Haist"
+    given-names: "Maximilian"
+    orcid: "https://orcid.org/0000-0002-6720-7570"
+title: "Spatial-Atlas-MCC: Virus-associated Immunomodulation within the Merkel cell carcinoma TME"
+version: 1.0.0
+doi: 10.5281/zenodo.XXXXXXX  # (You will paste the actual DOI here after Step 4)
+date-released: 2026-11-03
+url: "https://github.com/nolanlab/Spatial-Atlas-MCC"
